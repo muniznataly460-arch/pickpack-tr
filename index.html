@@ -2,11 +2,16 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Pick&Pack TR</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Poppins:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --bg:#F1EFEE;
@@ -36,25 +41,26 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:'Poppins',sans-s
 .disp{font-family:'Montserrat',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:.03em;}
 .tape{height:5px;background:repeating-linear-gradient(-45deg,var(--amber) 0 10px,var(--brand-gray) 10px 20px);opacity:.9;}
 header{background:var(--ink);color:#fff;position:sticky;top:0;z-index:20;}
-.header-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:28px;padding:14px 20px;}
-.logo{display:flex;align-items:center;gap:10px;}
+.header-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:14px;padding:12px 16px;flex-wrap:wrap;}
+.logo{display:flex;align-items:center;gap:10px;flex-shrink:0;}
 .logo-mark{width:34px;height:34px;border-radius:50%;background:var(--amber);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:'Montserrat',sans-serif;font-weight:800;font-size:14px;color:#fff;letter-spacing:0;}
-.logo-text{font-size:21px;font-weight:800;letter-spacing:.02em;font-family:'Montserrat',sans-serif;}
-.logo-sub{font-size:9.5px;color:#C8CFC9;letter-spacing:.1em;margin-top:-1px;}
-nav{display:flex;gap:4px;flex:1;}
-.navbtn{position:relative;background:transparent;border:none;color:#C8CFC9;font-family:'Montserrat',sans-serif;text-transform:uppercase;letter-spacing:.05em;font-size:15px;font-weight:600;padding:10px 16px;border-radius:6px;cursor:pointer;transition:.15s;}
+.logo-text{font-size:19px;font-weight:800;letter-spacing:.02em;font-family:'Montserrat',sans-serif;}
+.logo-sub{font-size:9px;color:#C8CFC9;letter-spacing:.09em;margin-top:-1px;}
+nav{display:flex;gap:2px;flex:1 1 auto;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;order:3;flex-basis:100%;}
+nav::-webkit-scrollbar{display:none;}
+.navbtn{position:relative;background:transparent;border:none;color:#C8CFC9;font-family:'Montserrat',sans-serif;text-transform:uppercase;letter-spacing:.05em;font-size:13.5px;font-weight:600;padding:9px 12px;border-radius:6px;cursor:pointer;transition:.15s;white-space:nowrap;flex-shrink:0;}
 .navbtn:hover{background:rgba(255,255,255,.06);color:#fff;}
 .navbtn.active{background:rgba(255,255,255,.1);color:#fff;}
 .navbtn.active:after{content:'';position:absolute;left:14px;right:14px;bottom:-15px;height:3px;background:var(--amber);}
 .badge-ping{position:absolute;top:5px;right:8px;background:var(--amber);color:var(--amber-ink);font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;}
-.userbox{display:flex;align-items:center;gap:8px;}
-.userbox input{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:6px;padding:7px 10px;font-size:13px;width:130px;}
+.userbox{display:flex;align-items:center;gap:8px;margin-left:auto;}
+.userbox input{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:6px;padding:7px 10px;font-size:13px;width:120px;}
 .userbox input::placeholder{color:#9BA39D;}
 .userbox label{font-size:10px;color:#9BA39D;text-transform:uppercase;letter-spacing:.08em;}
 
-main{max-width:1180px;margin:0 auto;padding:28px 20px 80px;}
+main{max-width:1180px;margin:0 auto;padding:22px 16px 80px;}
 .page-title{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:18px;gap:16px;flex-wrap:wrap;}
-.page-title h1{font-family:'Montserrat',sans-serif;text-transform:uppercase;letter-spacing:.03em;font-size:30px;font-weight:700;margin:0;}
+.page-title h1{font-family:'Montserrat',sans-serif;text-transform:uppercase;letter-spacing:.03em;font-size:26px;font-weight:700;margin:0;}
 .page-title p{color:var(--ink-soft);font-size:13.5px;margin:4px 0 0;}
 .btn{font-family:'Poppins';font-weight:600;font-size:13.5px;border-radius:6px;padding:10px 16px;border:1px solid transparent;cursor:pointer;transition:.12s;display:inline-flex;align-items:center;gap:7px;}
 .btn-primary{background:var(--ink);color:#fff;}
@@ -67,7 +73,7 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 80px;}
 .btn:disabled{opacity:.4;cursor:not-allowed;}
 .btn-sm{padding:6px 11px;font-size:12.5px;}
 
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow-x:auto;}
 .section-label{font-family:'Montserrat';text-transform:uppercase;letter-spacing:.08em;font-size:12.5px;color:var(--ink-soft);font-weight:600;margin:0 0 10px;}
 
 table{width:100%;border-collapse:collapse;}
@@ -165,7 +171,46 @@ tr.row-clickable:hover td{background:#F7F9F7;}
 .panel-actions{padding:16px 22px 22px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--line);margin-top:18px;flex-wrap:wrap;}
 .search-input{padding:9px 12px;border:1px solid var(--line);border-radius:6px;font-size:13.5px;width:240px;}
 .two-col{display:grid;grid-template-columns:1.5fr 1fr;gap:22px;padding:0 22px 22px;}
-@media(max-width:820px){.two-col{grid-template-columns:1fr;} .row2{grid-template-columns:1fr;} header .userbox{display:none;}}
+@media(max-width:820px){
+  .two-col{grid-template-columns:1fr;}
+  .row2{grid-template-columns:1fr;}
+}
+@media(max-width:680px){
+  .header-inner{gap:8px;padding:10px 12px;}
+  .logo-sub{display:none;}
+  .logo-text{font-size:16px;}
+  .logo-mark{width:28px;height:28px;font-size:12px;}
+  .userbox{margin-left:0;}
+  .userbox input{width:96px;font-size:12px;}
+  #btnSound{font-size:11px;padding:6px 9px;}
+  .navbtn{font-size:12.5px;padding:8px 10px;}
+  main{padding:16px 10px 70px;}
+  .page-title h1{font-size:21px;}
+  .page-title p{font-size:12.5px;}
+  .btn{font-size:13px;padding:9px 13px;}
+  table{font-size:12px;}
+  th,td{padding:8px 7px;}
+  .modal{max-width:96vw;}
+  .modal-body{padding:14px;}
+  .modal-head{padding:14px 16px;}
+  .stepper{padding:14px 2px 18px;}
+  .step .lbl{font-size:9px;letter-spacing:.02em;}
+  .step .dot{width:22px;height:22px;font-size:10.5px;}
+  .detail-header{padding:16px 14px 0;}
+  .two-col{padding:0 14px 14px;}
+  .panel-actions{padding:14px;}
+  .tiempos-strip,.resumen-chips{padding:0 14px 12px;}
+  .pantalla-row{padding:10px 12px;}
+  .pr-folio{min-width:64px;font-size:12.5px;}
+  .search-input{width:100%;}
+  .page-title{flex-direction:column;align-items:stretch;}
+  .page-title>.btn,.page-title>div>.btn{width:100%;justify-content:center;}
+}
+@media(max-width:420px){
+  .navbtn{font-size:11.5px;padding:7px 8px;}
+  .logo-text{font-size:14px;}
+  .badge{font-size:10px;padding:3px 8px;}
+}
 .loading-screen{display:flex;align-items:center;justify-content:center;height:70vh;color:var(--ink-soft);font-family:'Montserrat';text-transform:uppercase;letter-spacing:.06em;}
 .local-warning{background:#FDF2E0;color:#7A5510;border-bottom:1px solid #E8B84B;font-size:12.5px;text-align:center;padding:8px 16px;}
 
@@ -215,10 +260,71 @@ tr.row-clickable:hover td{background:#F7F9F7;}
 // guardados solo en ESTE navegador/dispositivo, no compartidos entre usuarios.
 // Para compartir datos en tiempo real entre varias personas fuera de Claude se
 // necesita un backend real (Firebase, Supabase, Odoo, etc.).
+// =========================================================
+// CONFIGURACIÓN DE FIREBASE (solo necesaria si esta página se abre
+// fuera de Claude, ej. en GitHub Pages, y quieres que varias personas
+// compartan los mismos datos en tiempo real).
+//
+// Cómo obtener estos datos: ve a https://console.firebase.google.com,
+// crea un proyecto gratis, agrega una "app web", y copia el objeto de
+// configuración que te da ahí. Pégalo reemplazando los valores de abajo.
+// Si los dejas tal cual (con "PEGA_AQUI..."), la app sigue funcionando
+// normal, solo que sin compartir datos fuera de Claude.
+// =========================================================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCrieKxviTIlaIiDLVcrCg7klGa96zUhMQ",
+  authDomain: "pickpack-tr.firebaseapp.com",
+  projectId: "pickpack-tr",
+  storageBucket: "pickpack-tr.firebasestorage.app",
+  messagingSenderId: "702696906806",
+  appId: "1:702696906806:web:84c649b2e15dc432cb3897"
+};
+
 let usandoAlmacenamientoLocal = false;
-if(typeof window.storage === 'undefined'){
+let usandoFirebase = false;
+
+// Decide qué sistema de almacenamiento usar, en este orden de prioridad:
+// 1) window.storage de Claude (si se abre dentro de Claude — no se toca nada).
+// 2) Firebase (si se configuró arriba y esta página corre fuera de Claude).
+// 3) localStorage del navegador (último respaldo, solo local a ese dispositivo).
+async function setupStorage(){
+  if(typeof window.storage !== 'undefined'){
+    return; // ya estamos dentro de Claude, se usa tal cual
+  }
+  const cfgListo = FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.includes('PEGA_AQUI');
+  if(cfgListo && typeof firebase !== 'undefined'){
+    try{
+      firebase.initializeApp(FIREBASE_CONFIG);
+      const db = firebase.firestore();
+      const col = db.collection('pickpack_storage');
+      window.storage = {
+        async get(key){
+          const doc = await col.doc(key).get();
+          if(!doc.exists) throw new Error('key not found: '+key);
+          return {key, value: doc.data().value, shared:true};
+        },
+        async set(key, value){
+          await col.doc(key).set({value, actualizado: Date.now()});
+          return {key, value, shared:true};
+        },
+        async delete(key){
+          await col.doc(key).delete();
+          return {key, deleted:true, shared:true};
+        },
+        async list(prefix){
+          const snap = await col.get();
+          const keys = snap.docs.map(d=>d.id).filter(k=>!prefix || k.startsWith(prefix));
+          return {keys, prefix, shared:true};
+        }
+      };
+      usandoFirebase = true;
+      return;
+    }catch(e){
+      console.error('[Pick&Pack TR] No se pudo conectar a Firebase, usando localStorage:', e);
+    }
+  }
   usandoAlmacenamientoLocal = true;
-  console.warn('[Pick&Pack TR] window.storage no disponible: usando localStorage como respaldo (datos solo locales a este navegador).');
+  console.warn('[Pick&Pack TR] Sin Claude ni Firebase configurado: usando localStorage (datos solo locales a este navegador).');
   window.storage = {
     async get(key){
       const raw = localStorage.getItem('pp_'+key);
@@ -780,7 +886,8 @@ function extractProductsByBracket(lines){
 
 // Detecta cliente, asesor (vendedor) y número de cotización en el texto reconstruido
 // del PDF, para autocompletar esos campos del formulario de nuevo pedido.
-function extractCotizacionMeta(lines){
+function extractCotizacionMeta(lines, items){
+  items = items || [];
   let numeroCotizacion = null, asesor = null, cliente = null, idxCot = -1;
 
   for(let i=0;i<lines.length;i++){
@@ -802,28 +909,42 @@ function extractCotizacionMeta(lines){
     }
   }
 
-  // El cliente es el bloque de nombre/dirección justo arriba de la línea "RFC:" que
-  // aparece antes del número de cotización — así no se confunde con el remitente
-  // (nuestra propia empresa), que suele aparecer primero en el PDF pero sin RFC ahí.
-  if(idxCot>0){
-    let idxRfc = -1;
-    for(let i=idxCot-1;i>=0;i--){
-      if(/^rfc\s*:/i.test((lines[i]||'').trim())){ idxRfc = i; break; }
+  // El cliente es el bloque de nombre/dirección alineado con la línea "RFC:" (misma
+  // posición horizontal), que siempre está a la derecha del remitente (nuestra propia
+  // empresa, alineada más a la izquierda). Usar la posición evita confundirse sin
+  // importar cuántas líneas tenga la dirección o si alguna no trae números.
+  const rfcItem = items.find(it=>/rfc\s*:?/i.test(it.str));
+  if(rfcItem){
+    const bloque = items.filter(it=>
+      Math.abs(it.x - rfcItem.x) < 90 &&
+      it.y >= rfcItem.y &&
+      it.y - rfcItem.y < 220
+    );
+    if(bloque.length){
+      const rows = {};
+      bloque.forEach(it=>{
+        let key = Object.keys(rows).map(Number).find(k=>Math.abs(k-it.y)<=3);
+        if(key===undefined) key = it.y;
+        (rows[key] = rows[key]||[]).push(it);
+      });
+      const ys = Object.keys(rows).map(Number).sort((a,b)=>b-a); // de arriba hacia abajo
+      if(ys.length){
+        const topRow = rows[ys[0]].sort((a,b)=>a.x-b.x);
+        const posibleNombre = topRow.map(it=>it.str).join(' ').trim();
+        if(posibleNombre && !/^rfc\s*:?/i.test(posibleNombre)) cliente = posibleNombre;
+      }
     }
-    if(idxRfc>=0){
-      let i = idxRfc-1;
-      while(i>=0 && !/\d/.test(lines[i])) i--;   // saltar línea(s) de país
-      while(i>=0 && /\d/.test(lines[i])) i--;    // saltar calle / ciudad-cp
-      if(i>=0 && lines[i].trim().length>3) cliente = lines[i].trim();
-    }
-    if(!cliente){
-      const PALABRAS_NO_NOMBRE = /^(m[eé]xico|usa|estados unidos|canad[aá])$/i;
-      for(let i=0;i<idxCot;i++){
-        const l = (lines[i]||'').trim();
-        const next = (lines[i+1]||'').trim();
-        if(l && l.length>4 && !/\d/.test(l) && !PALABRAS_NO_NOMBRE.test(l) && next && /\d/.test(next)){
-          cliente = l; // se sigue buscando: nos quedamos con el último bloque válido (el más cercano a la cotización)
-        }
+  }
+
+  // Respaldo si el PDF no trae RFC (ej. cliente sin RUC/RFC registrado): usar el
+  // patrón de nombre-sin-dígitos seguido de una línea con dígitos.
+  if(!cliente && idxCot>0){
+    const PALABRAS_NO_NOMBRE = /^(m[eé]xico|usa|estados unidos|canad[aá])$/i;
+    for(let i=0;i<idxCot;i++){
+      const l = (lines[i]||'').trim();
+      const next = (lines[i+1]||'').trim();
+      if(l && l.length>4 && !/\d/.test(l) && !PALABRAS_NO_NOMBRE.test(l) && next && /\d/.test(next)){
+        cliente = l;
       }
     }
   }
@@ -857,17 +978,19 @@ async function processPdfFile(file){
     const pdf = await pdfjsLib.getDocument({data:buf}).promise;
     let allColProducts = [];
     let allLines = [];
+    let allRawItems = [];
     for(let pnum=1; pnum<=pdf.numPages; pnum++){
       const page = await pdf.getPage(pnum);
       const content = await page.getTextContent();
       const items = content.items.map(it=>({str:it.str, x:it.transform[4], y:Math.round(it.transform[5])}));
       allColProducts = allColProducts.concat(extractProductsColumnBased(items));
       allLines = allLines.concat(buildLinesFromItems(items));
+      allRawItems = allRawItems.concat(items);
     }
     const byBracket = extractProductsByBracket(allLines);
     const extracted = byBracket.length ? byBracket : (allColProducts.length ? allColProducts : parseLinesToProducts(allLines));
 
-    const meta = extractCotizacionMeta(allLines);
+    const meta = extractCotizacionMeta(allLines, allRawItems);
     let notasMeta = [];
     if(meta.cliente){ document.getElementById('mCliente').value = meta.cliente; notasMeta.push('cliente'); }
     if(meta.numeroCotizacion){ document.getElementById('mFolio').value = meta.numeroCotizacion; notasMeta.push('folio'); }
@@ -1753,9 +1876,13 @@ document.getElementById('btnSound').onclick = (e)=>{
 document.body.addEventListener('click', ()=>{ ensureAudio(); }, {once:true});
 
 (async function init(){
-  if(usandoAlmacenamientoLocal){
+  await setupStorage();
+  if(usandoFirebase){
     document.getElementById('localWarning').innerHTML =
-      '<div class="local-warning">⚠ Estás usando esta página fuera de Claude: los datos se guardan solo en este navegador/dispositivo, no se comparten con otras personas. Para trabajo en equipo real, usa el enlace de Claude o conecta un backend compartido.</div>';
+      '<div class="local-warning" style="background:#E3F5EC;color:#1E7A46;border-bottom-color:#8FD9B0;">🔥 Conectado a Firebase — todos los que abran este enlace comparten los mismos datos en tiempo real.</div>';
+  } else if(usandoAlmacenamientoLocal){
+    document.getElementById('localWarning').innerHTML =
+      '<div class="local-warning">⚠ Estás usando esta página fuera de Claude: los datos se guardan solo en este navegador/dispositivo, no se comparten con otras personas. Para trabajo en equipo real, usa el enlace de Claude o conecta Firebase.</div>';
   }
   await loadPedidos();
   await loadAsesores();
