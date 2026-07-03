@@ -423,6 +423,17 @@ async function saveClientes(){
     console.error('Error guardando clientes', e);
   }
 }
+// Busca si el texto detectado en el PDF coincide con algún cliente ya registrado
+// (exacto, o que uno contenga al otro — útil cuando se coló texto extra al detectar).
+function buscarClienteParecido(nombreDetectado){
+  if(!nombreDetectado) return null;
+  const norm = s => s.toLowerCase().replace(/\s+/g,' ').trim();
+  const nd = norm(nombreDetectado);
+  let match = clientes.find(c => norm(c) === nd);
+  if(match) return match;
+  match = clientes.find(c => { const nc = norm(c); return nc.length>3 && (nd.includes(nc) || nc.includes(nd)); });
+  return match || null;
+}
 
 function uid(){ return 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
@@ -462,6 +473,9 @@ async function acquireLock(p){
   await savePedidos();
   clearInterval(lockHeartbeatTimer);
   lockHeartbeatTimer = setInterval(async ()=>{
+    if(document.hidden){
+      return; // pestaña en segundo plano: no renovar, que expire solo si de verdad se quedó ahí
+    }
     if(currentPedidoId===p.id && iHoldLock(p)){
       p.locked_at = new Date().toISOString();
       await savePedidos();
@@ -772,6 +786,9 @@ function openNuevoPedidoModal(){
               <option value="__new__">+ Agregar nuevo cliente&hellip;</option>
             </select>
             <input id="mClienteNuevo" type="text" placeholder="Nombre del cliente" style="margin-top:8px;display:none;">
+            <button type="button" id="btnImportarClientes" style="background:none;border:none;color:var(--teal);font-size:11.5px;text-decoration:underline;cursor:pointer;margin-top:6px;padding:0;">📋 Importar varios clientes de un jalón</button>
+            <textarea id="taImportarClientes" rows="5" placeholder="Pega aquí tu lista de clientes, uno por línea" style="display:none;margin-top:6px;"></textarea>
+            <button type="button" id="btnGuardarImportClientes" style="display:none;margin-top:6px;" class="btn btn-ghost btn-sm">Agregar todos a la lista</button>
           </div>
           <div class="field"><label>Folio / N° de cotización</label><input id="mFolio" type="text" value="${nextFolio()}" class="mono"></div>
         </div>
@@ -825,6 +842,34 @@ function openNuevoPedidoModal(){
     const nuevoInput = document.getElementById('mClienteNuevo');
     nuevoInput.style.display = e.target.value==='__new__' ? 'block' : 'none';
     if(e.target.value==='__new__') nuevoInput.focus();
+  };
+  document.getElementById('btnImportarClientes').onclick = ()=>{
+    const ta = document.getElementById('taImportarClientes');
+    const btnGuardar = document.getElementById('btnGuardarImportClientes');
+    const mostrar = ta.style.display==='none';
+    ta.style.display = mostrar ? 'block' : 'none';
+    btnGuardar.style.display = mostrar ? 'inline-flex' : 'none';
+    if(mostrar) ta.focus();
+  };
+  document.getElementById('btnGuardarImportClientes').onclick = async ()=>{
+    const texto = document.getElementById('taImportarClientes').value;
+    const nombres = texto.split('\n').map(l=>l.trim()).filter(Boolean);
+    if(nombres.length===0){ showToast('Pega al menos un nombre, uno por línea.'); return; }
+    let agregados = 0;
+    nombres.forEach(n=>{
+      if(!clientes.some(c=>c.toLowerCase()===n.toLowerCase())){ clientes.push(n); agregados++; }
+    });
+    await saveClientes();
+    const sel = document.getElementById('mCliente');
+    const valorActual = sel.value;
+    sel.innerHTML = '<option value="">Selecciona un cliente&hellip;</option>' +
+      clientes.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('') +
+      '<option value="__new__">+ Agregar nuevo cliente&hellip;</option>';
+    sel.value = valorActual;
+    document.getElementById('taImportarClientes').value = '';
+    document.getElementById('taImportarClientes').style.display = 'none';
+    document.getElementById('btnGuardarImportClientes').style.display = 'none';
+    showToast(agregados+' cliente(s) agregado(s) a la lista.');
   };
   document.getElementById('dropzone').onclick = ()=>document.getElementById('pdfInput').click();
   document.getElementById('pdfInput').onchange = handlePdfUpload;
@@ -1026,12 +1071,17 @@ async function processPdfFile(file){
     let notasMeta = [];
     if(meta.cliente){
       const selCliente = document.getElementById('mCliente');
-      const yaExisteCliente = clientes.some(c=>c.toLowerCase()===meta.cliente.toLowerCase());
-      if(!yaExisteCliente){ clientes.push(meta.cliente); await saveClientes(); }
-      const optCliente = Array.from(selCliente.options).find(o=>o.value.toLowerCase()===meta.cliente.toLowerCase());
-      if(optCliente){ selCliente.value = optCliente.value; }
-      else { selCliente.innerHTML += `<option value="${escapeHtml(meta.cliente)}">${escapeHtml(meta.cliente)}</option>`; selCliente.value = meta.cliente; }
-      notasMeta.push('cliente');
+      const parecido = buscarClienteParecido(meta.cliente);
+      if(parecido){
+        selCliente.value = parecido;
+        notasMeta.push('cliente (coincide con "'+parecido+'")');
+      } else {
+        selCliente.value = '__new__';
+        const nuevoInput = document.getElementById('mClienteNuevo');
+        nuevoInput.style.display = 'block';
+        nuevoInput.value = meta.cliente;
+        notasMeta.push('cliente detectado — revísalo antes de guardar');
+      }
     }
     if(meta.numeroCotizacion){ document.getElementById('mFolio').value = meta.numeroCotizacion; notasMeta.push('folio'); }
     if(meta.asesor){
@@ -1454,7 +1504,8 @@ function renderEmbarquesPanel(p){
       const cant = (pr.cantidad_empacada!==undefined && pr.cantidad_empacada!==null) ? pr.cantidad_empacada : pr.cantidad_surtida;
       return parseFloat(cant) !== parseFloat(pr.cantidad_surtida);
     });
-    const puedeConfirmar = allVerificado && conDiferencia.length===0 && !!(p.envio.guia && p.envio.guia.trim());
+    const requiereGuia = p.tipo_pedido !== 'Local';
+    const puedeConfirmar = allVerificado && conDiferencia.length===0 && (!requiereGuia || !!(p.envio.guia && p.envio.guia.trim()));
     return `
       <div class="section-label">Verificación de mercancía antes de empacar</div>
       <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Revisa cada producto contra lo surtido y confirma la cantidad que realmente vas a meter a la caja.</p>
@@ -1480,7 +1531,7 @@ function renderEmbarquesPanel(p){
       </table>
       <div class="row2" style="margin-top:14px;">
         <div class="field"><label>Número de bultos / cajas</label><input type="number" min="1" id="numBultos" value="${p.num_bultos||1}"></div>
-        <div class="field"><label>Número de guía (obligatorio para continuar)</label><input type="text" id="guiaEmpaque" class="mono" placeholder="Escríbela aquí" value="${escapeHtml(p.envio.guia||'')}"></div>
+        <div class="field"><label>Número de guía${requiereGuia ? ' (obligatorio para continuar)' : ' (opcional — es entrega local)'}</label><input type="text" id="guiaEmpaque" class="mono" placeholder="${requiereGuia?'Escríbela aquí':'No aplica para entrega local, déjalo en blanco si no tiene'}" value="${escapeHtml(p.envio.guia||'')}"></div>
       </div>
       ${conDiferencia.length ? `
         <div style="margin-top:12px;background:#FBE4E0;border:1px solid var(--red);border-radius:6px;padding:12px 14px;">
@@ -1492,7 +1543,7 @@ function renderEmbarquesPanel(p){
         <button class="btn btn-ghost" id="btnGuardarEmpaque">Guardar avance</button>
         <button class="btn btn-amber" id="btnConfirmarEmpaque" ${puedeConfirmar?'':'disabled'}>Confirmar empaque</button>
       </div>
-      ${puedeConfirmar?'':(conDiferencia.length?'':'<p style="font-size:12px;color:var(--ink-soft);">Marca cada producto como verificado y escribe el número de guía para poder confirmar el empaque.</p>')}
+      ${puedeConfirmar?'':(conDiferencia.length?'':'<p style="font-size:12px;color:var(--ink-soft);">Marca cada producto como verificado'+(requiereGuia?' y escribe el número de guía':'')+' para poder confirmar el empaque.</p>')}
     `;
   }
   if(p.estado==='empacado'){
@@ -1625,7 +1676,8 @@ function attachDetailHandlers(p){
     syncEmpaqueInputs(p);
     const guiaInp = document.getElementById('guiaEmpaque');
     const guia = guiaInp ? guiaInp.value.trim() : (p.envio.guia||'');
-    if(!guia){ p.envio.guia = ''; showToast('Escribe el número de guía antes de confirmar el empaque.'); render(); return; }
+    const requiereGuia = p.tipo_pedido !== 'Local';
+    if(requiereGuia && !guia){ p.envio.guia = ''; showToast('Escribe el número de guía antes de confirmar el empaque.'); render(); return; }
     p.envio.guia = guia;
     if(!p.productos.every(pr=>pr.verificado_empaque)){ showToast('Faltan productos por verificar.'); return; }
     const hayDiferencia = p.productos.some(pr=>parseFloat(pr.cantidad_empacada)!==parseFloat(pr.cantidad_surtida));
@@ -1937,6 +1989,12 @@ document.body.addEventListener('click', ()=>{ ensureAudio(); }, {once:true});
   render();
   startPolling();
   window.addEventListener('beforeunload', ()=>{
+    if(currentPedidoId){
+      const p = pedidos.find(x=>x.id===currentPedidoId);
+      if(p && iHoldLock(p)){ clearLockFields(p); savePedidos(); }
+    }
+  });
+  window.addEventListener('pagehide', ()=>{
     if(currentPedidoId){
       const p = pedidos.find(x=>x.id===currentPedidoId);
       if(p && iHoldLock(p)){ clearLockFields(p); savePedidos(); }
