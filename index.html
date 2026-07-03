@@ -356,6 +356,7 @@ const TIPOS_PEDIDO = ['Foráneo','Local','Dropship','Mostrador'];
 
 let pedidos = [];
 let asesores = [];
+let clientes = [];
 let currentTab = 'captura';
 let currentPedidoId = null;
 let userName = '';
@@ -405,6 +406,21 @@ async function saveAsesores(){
     await window.storage.set('asesores', JSON.stringify(asesores), true);
   }catch(e){
     console.error('Error guardando asesores', e);
+  }
+}
+async function loadClientes(){
+  try{
+    const res = await window.storage.get('clientes', true);
+    clientes = res ? JSON.parse(res.value) : [];
+  }catch(e){
+    clientes = [];
+  }
+}
+async function saveClientes(){
+  try{
+    await window.storage.set('clientes', JSON.stringify(clientes), true);
+  }catch(e){
+    console.error('Error guardando clientes', e);
   }
 }
 
@@ -748,7 +764,15 @@ function openNuevoPedidoModal(){
           </div>
         </div>
         <div class="row2">
-          <div class="field"><label>Cliente</label><input id="mCliente" type="text" placeholder="Nombre del cliente"></div>
+          <div class="field">
+            <label>Cliente</label>
+            <select id="mCliente">
+              <option value="">Selecciona un cliente&hellip;</option>
+              ${clientes.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
+              <option value="__new__">+ Agregar nuevo cliente&hellip;</option>
+            </select>
+            <input id="mClienteNuevo" type="text" placeholder="Nombre del cliente" style="margin-top:8px;display:none;">
+          </div>
           <div class="field"><label>Folio / N° de cotización</label><input id="mFolio" type="text" value="${nextFolio()}" class="mono"></div>
         </div>
         <div class="row2">
@@ -794,6 +818,11 @@ function openNuevoPedidoModal(){
   document.getElementById('mCancel').onclick = closeModal;
   document.getElementById('mAsesor').onchange = (e)=>{
     const nuevoInput = document.getElementById('mAsesorNuevo');
+    nuevoInput.style.display = e.target.value==='__new__' ? 'block' : 'none';
+    if(e.target.value==='__new__') nuevoInput.focus();
+  };
+  document.getElementById('mCliente').onchange = (e)=>{
+    const nuevoInput = document.getElementById('mClienteNuevo');
     nuevoInput.style.display = e.target.value==='__new__' ? 'block' : 'none';
     if(e.target.value==='__new__') nuevoInput.focus();
   };
@@ -931,7 +960,10 @@ function extractCotizacionMeta(lines, items){
       if(ys.length){
         const topRow = rows[ys[0]].sort((a,b)=>a.x-b.x);
         const posibleNombre = topRow.map(it=>it.str).join(' ').trim();
-        if(posibleNombre && !/^rfc\s*:?/i.test(posibleNombre)) cliente = posibleNombre;
+        if(posibleNombre && !/^rfc\s*:?/i.test(posibleNombre)){
+          // quitar números sueltos que se hayan colado al final (ej. cantidades/precios)
+          cliente = posibleNombre.replace(/(\s+\d[\d.,]*)+\s*$/,'').trim();
+        }
       }
     }
   }
@@ -992,7 +1024,15 @@ async function processPdfFile(file){
 
     const meta = extractCotizacionMeta(allLines, allRawItems);
     let notasMeta = [];
-    if(meta.cliente){ document.getElementById('mCliente').value = meta.cliente; notasMeta.push('cliente'); }
+    if(meta.cliente){
+      const selCliente = document.getElementById('mCliente');
+      const yaExisteCliente = clientes.some(c=>c.toLowerCase()===meta.cliente.toLowerCase());
+      if(!yaExisteCliente){ clientes.push(meta.cliente); await saveClientes(); }
+      const optCliente = Array.from(selCliente.options).find(o=>o.value.toLowerCase()===meta.cliente.toLowerCase());
+      if(optCliente){ selCliente.value = optCliente.value; }
+      else { selCliente.innerHTML += `<option value="${escapeHtml(meta.cliente)}">${escapeHtml(meta.cliente)}</option>`; selCliente.value = meta.cliente; }
+      notasMeta.push('cliente');
+    }
     if(meta.numeroCotizacion){ document.getElementById('mFolio').value = meta.numeroCotizacion; notasMeta.push('folio'); }
     if(meta.asesor){
       const selAsesor = document.getElementById('mAsesor');
@@ -1144,9 +1184,16 @@ function parseLinesToProducts(lines){
 }
 
 async function crearPedidoDesdeModal(){
-  const cliente = document.getElementById('mCliente').value.trim();
   const folio = document.getElementById('mFolio').value.trim() || nextFolio();
-  if(!cliente){ showToast('Escribe el nombre del cliente.'); return; }
+
+  const clienteSel = document.getElementById('mCliente').value;
+  let cliente = clienteSel;
+  if(clienteSel==='__new__'){
+    cliente = document.getElementById('mClienteNuevo').value.trim();
+    if(!cliente){ showToast('Escribe el nombre del nuevo cliente.'); return; }
+    if(!clientes.some(c=>c.toLowerCase()===cliente.toLowerCase())){ clientes.push(cliente); await saveClientes(); }
+  }
+  if(!cliente){ showToast('Selecciona o agrega el cliente.'); return; }
 
   const asesorSel = document.getElementById('mAsesor').value;
   let asesor = asesorSel;
@@ -1886,6 +1933,7 @@ document.body.addEventListener('click', ()=>{ ensureAudio(); }, {once:true});
   }
   await loadPedidos();
   await loadAsesores();
+  await loadClientes();
   render();
   startPolling();
   window.addEventListener('beforeunload', ()=>{
