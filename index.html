@@ -55,6 +55,7 @@ nav::-webkit-scrollbar{display:none;}
 .badge-ping{position:absolute;top:5px;right:8px;background:var(--amber);color:var(--amber-ink);font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;}
 .userbox{display:flex;align-items:center;gap:8px;margin-left:auto;}
 .userbox input{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:6px;padding:7px 10px;font-size:13px;width:120px;}
+.userbox input.vacio{border-color:var(--amber);box-shadow:0 0 0 2px rgba(190,42,53,.25);animation:pulseRed 1.8s ease-in-out infinite;}
 .userbox input::placeholder{color:#9BA39D;}
 .userbox label{font-size:10px;color:#9BA39D;text-transform:uppercase;letter-spacing:.08em;}
 
@@ -215,6 +216,18 @@ tr.row-clickable:hover td{background:#F7F9F7;}
 .local-warning{background:#FDF2E0;color:#7A5510;border-bottom:1px solid #E8B84B;font-size:12.5px;text-align:center;padding:8px 16px;}
 
 .tiempos-strip{display:flex;flex-wrap:wrap;gap:10px;padding:0 22px 16px;}
+.foto-galeria{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px;}
+.caja-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.caja-row .caja-num{font-family:'IBM Plex Mono';font-size:12.5px;color:var(--ink-soft);width:56px;flex-shrink:0;}
+.caja-row input{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:13.5px;}
+.caja-row .caja-quitar{background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:4px 8px;flex-shrink:0;}
+.caja-resumen-box{display:flex;flex-wrap:wrap;align-items:center;gap:16px;background:#FBE4E0;border:1.5px solid var(--amber);border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:16px;font-weight:700;color:var(--ink);}
+.caja-resumen-item strong{font-family:'Montserrat';text-transform:uppercase;letter-spacing:.03em;color:var(--amber);margin-right:4px;}
+.foto-item{position:relative;width:110px;height:110px;border-radius:6px;overflow:hidden;border:1px solid var(--line);}
+.foto-item img{width:100%;height:100%;object-fit:cover;cursor:pointer;}
+.foto-item .foto-quitar{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.foto-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;}
+.foto-lightbox img{max-width:100%;max-height:100%;border-radius:6px;}
 .tiempo-chip{background:#F7F9F7;border:1px solid var(--line);border-radius:6px;padding:6px 12px;display:flex;flex-direction:column;gap:1px;}
 .tc-lbl{font-family:'Montserrat';text-transform:uppercase;letter-spacing:.05em;font-size:10.5px;color:var(--ink-soft);font-weight:600;}
 .tc-val{font-size:13px;font-weight:600;}
@@ -236,8 +249,8 @@ tr.row-clickable:hover td{background:#F7F9F7;}
     <button class="btn btn-ghost btn-sm" id="btnSound" style="border-color:rgba(255,255,255,.3);color:#fff;">🔔 Sonido: ON</button>
     <div class="userbox">
       <div>
-        <label>Operador</label>
-        <input id="userNameInput" type="text" placeholder="Tu nombre" maxlength="30">
+        <label>Operador <span style="color:var(--amber);">*</span> obligatorio</label>
+        <input id="userNameInput" type="text" placeholder="Escribe tu nombre" maxlength="30">
       </div>
     </div>
   </div>
@@ -423,6 +436,45 @@ async function saveClientes(){
     console.error('Error guardando clientes', e);
   }
 }
+
+// ---------- FOTO DE FACTURA ----------
+// Se guarda por separado (una clave por pedido), no dentro del bloque grande de
+// "pedidos" — así no se sobrecarga ese documento cada vez que cambia cualquier
+// pedido, y se respeta el límite de tamaño por documento de Firebase.
+function comprimirImagen(file, maxDim, calidad){
+  maxDim = maxDim || 1000; calidad = calidad || 0.6;
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let w = img.width, h = img.height;
+        if(w > h && w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else if(h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', calidad));
+      };
+      img.onerror = ()=>reject(new Error('No se pudo leer la imagen'));
+      img.src = e.target.result;
+    };
+    reader.onerror = ()=>reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
+const MAX_FOTOS_FACTURA = 6;
+async function obtenerFotosFactura(pedidoId){
+  try{
+    const res = await window.storage.get('factura_fotos_'+pedidoId, true);
+    return res ? JSON.parse(res.value) : [];
+  }catch(e){
+    return [];
+  }
+}
+async function guardarFotosFactura(pedidoId, fotos){
+  await window.storage.set('factura_fotos_'+pedidoId, JSON.stringify(fotos), true);
+}
 // Busca si el texto detectado en el PDF coincide con algún cliente ya registrado
 // (exacto, o que uno contenga al otro — útil cuando se coló texto extra al detectar).
 function buscarClienteParecido(nombreDetectado){
@@ -452,6 +504,20 @@ function addHistorial(p, evento, detalle){
 
 // ---------- BLOQUEO SIMPLE POR PEDIDO ----------
 // Evita que dos personas editen el mismo pedido al mismo tiempo y se pisen los cambios.
+// Nadie puede abrir un pedido para trabajarlo, ni crear uno nuevo, sin haber
+// escrito antes su nombre (o número de empleado) en "Operador" — así siempre
+// queda un responsable identificado de cada acción.
+function tieneOperador(){
+  return !!(userName && userName.trim());
+}
+function exigirOperador(){
+  if(tieneOperador()) return true;
+  showToast('⚠ Escribe tu nombre en "Operador" (arriba a la derecha) antes de continuar.');
+  const inp = document.getElementById('userNameInput');
+  if(inp){ inp.classList.add('vacio'); inp.focus(); }
+  return false;
+}
+
 function lockIsFresh(p){
   return !!(p && p.locked_by_session && p.locked_at && (Date.now() - new Date(p.locked_at).getTime()) < LOCK_TTL_MS);
 }
@@ -494,6 +560,8 @@ async function releaseLock(p){
 // Abre el detalle de un pedido respetando el bloqueo: si otra persona lo tiene abierto,
 // se abre en modo solo-lectura con un aviso; si está libre, se marca como "en uso".
 async function openPedidoDetail(id){
+  const requiereOp = currentTab==='almacen' || currentTab==='embarques';
+  if(requiereOp && !exigirOperador()) return;
   const p = pedidos.find(x=>x.id===id);
   if(!p) return;
   currentPedidoId = id;
@@ -580,12 +648,18 @@ function exportarExcel(){
       'Paquetería': p.envio.paqueteria || '',
       'Guía': p.envio.guia || '',
       'Costo de envío': p.envio.costo_envio || 0,
+      'N° de bultos': p.num_bultos || '',
+      'Medidas de las cajas': (p.cajas&&p.cajas.length) ? p.cajas.map((c,i)=>'Caja '+(i+1)+(c.medidas?': '+c.medidas:'')).join(' | ') : '',
       'N° Factura': (p.factura && p.factura.numero) || '',
       'Tuvo faltante durante el proceso': faltantesHistorial(p).length ? 'Sí' : 'No',
+      'Cancelado': p.cancelado ? 'Sí' : 'No',
+      'Motivo de cancelación': p.cancelado ? (p.motivo_cancelacion||'') : '',
+      'Cancelado por': p.cancelado ? (p.cancelado_por||'') : '',
     };
   });
 
   const productosRows = [];
+  const faltantesRows = [];
   pedidos.forEach(p=>{
     p.productos.forEach(pr=>{
       productosRows.push({
@@ -595,6 +669,17 @@ function exportarExcel(){
         'Cant. empacada': (pr.cantidad_empacada!==undefined && pr.cantidad_empacada!==null) ? pr.cantidad_empacada : '',
         'Verificado en empaque': pr.verificado_empaque ? 'Sí' : (pr.verificado_empaque===false ? 'No' : ''),
       });
+      const solicitado = parseFloat(pr.cantidad_solicitada) || 0;
+      const surtido = parseFloat(pr.cantidad_surtida) || 0;
+      const negado = Math.max(0, solicitado - surtido);
+      if(negado > 0){
+        faltantesRows.push({
+          'Folio': p.folio, 'Cliente': p.cliente, 'Fecha': fmtFechaHoraExcel(p.fecha_creacion),
+          'SKU': pr.sku || '', 'Producto': pr.nombre,
+          'Cant. pedida': solicitado, 'Cant. surtida': surtido, 'Cant. negada (faltante)': negado,
+          '% cumplido': solicitado>0 ? Math.round((surtido/solicitado)*100)+'%' : '',
+        });
+      }
     });
   });
 
@@ -608,9 +693,23 @@ function exportarExcel(){
     });
   });
 
+  // Resumen agrupado por código: qué productos son los que más se están negando en total
+  const resumenPorSku = {};
+  faltantesRows.forEach(f=>{
+    const key = f.SKU || f.Producto;
+    if(!resumenPorSku[key]){
+      resumenPorSku[key] = {SKU: f.SKU, Producto: f.Producto, 'Veces negado': 0, 'Total negado': 0};
+    }
+    resumenPorSku[key]['Veces negado'] += 1;
+    resumenPorSku[key]['Total negado'] += f['Cant. negada (faltante)'];
+  });
+  const resumenFaltantesRows = Object.values(resumenPorSku).sort((a,b)=>b['Total negado']-a['Total negado']);
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pedidosRows), 'Pedidos');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(productosRows), 'Productos');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(faltantesRows), 'Solicitado vs Negado');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenFaltantesRows), 'Resumen faltantes por código');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(historialRows), 'Historial');
   const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
   XLSX.writeFile(wb, 'pickpack-tr-reporte-'+stamp+'.xlsx');
@@ -638,9 +737,9 @@ function escapeHtml(s){
 // ---------- nav render ----------
 function renderNav(){
   const nav = document.getElementById('nav');
-  const pendAlmacen = pedidos.filter(p=>p.estado==='nuevo'||p.estado==='surtiendo').length;
-  const pendEmbarques = pedidos.filter(p=>['surtido','empacando','empacado'].includes(p.estado) && p.tipo_pedido!=='Mostrador').length;
-  const pendFacturacion = pedidos.filter(p=>p.estado==='enviado'||p.estado==='mostrador').length;
+  const pendAlmacen = pedidos.filter(p=>!p.cancelado && (p.estado==='nuevo'||p.estado==='surtiendo')).length;
+  const pendEmbarques = pedidos.filter(p=>!p.cancelado && ['surtido','empacando','empacado'].includes(p.estado) && p.tipo_pedido!=='Mostrador').length;
+  const pendFacturacion = pedidos.filter(p=>!p.cancelado && (p.estado==='enviado'||p.estado==='mostrador')).length;
   const counts = {captura:0, almacen:pendAlmacen, embarques:pendEmbarques, facturacion:pendFacturacion, historial:0};
   nav.innerHTML = NAV_ITEMS.map(item=>{
     const badge = counts[item.id] ? '<span class="badge-ping">'+counts[item.id]+'</span>' : '';
@@ -649,7 +748,14 @@ function renderNav(){
   nav.querySelectorAll('.navbtn').forEach(b=>{
     b.onclick = async ()=>{
       if(currentPedidoId){ const p = pedidos.find(x=>x.id===currentPedidoId); if(p) await releaseLock(p); }
-      currentTab=b.dataset.tab; currentPedidoId=null; render();
+      const cambiaDeArea = currentTab !== b.dataset.tab;
+      currentTab=b.dataset.tab; currentPedidoId=null;
+      if(cambiaDeArea){
+        userName = '';
+        const inp = document.getElementById('userNameInput');
+        if(inp){ inp.value=''; inp.classList.add('vacio'); }
+      }
+      render();
     };
   });
 }
@@ -682,6 +788,9 @@ function mostradorBadge(p){
   if(p.tipo_pedido==='Mostrador') return '<span class="badge-mostrador">⚡ MOSTRADOR</span>';
   if(p.tipo_pedido==='Local') return '<span class="badge-local">📍 LOCAL</span>';
   return '';
+}
+function canceladoBadge(p){
+  return p.cancelado ? '<span style="background:#3a3a3a;color:#fff;font-family:\'Montserrat\';text-transform:uppercase;letter-spacing:.05em;font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:5px;">🗑 CANCELADO</span>' : '';
 }
 function prioridadScore(p){
   if(p.tipo_pedido==='Mostrador') return 2;
@@ -719,7 +828,7 @@ function renderCaptura(){
     <div class="card">
       ${rows.length===0 ? emptyState('📄','Sin pedidos capturados','Da clic en "Nuevo pedido" para cargar tu primera cotización.') : `
       <table>
-        <thead><tr><th>Folio</th><th>Cliente</th><th>Asesor</th><th>Fecha</th><th># Productos</th><th>Estado</th></tr></thead>
+        <thead><tr><th>Folio</th><th>Cliente</th><th>Asesor</th><th>Fecha</th><th># Productos</th><th>Estado</th><th></th></tr></thead>
         <tbody>
           ${rows.map(p=>`
             <tr class="row-clickable" data-id="${p.id}">
@@ -728,7 +837,8 @@ function renderCaptura(){
               <td>${escapeHtml(p.asesor||'—')}</td>
               <td class="mono">${fmtFecha(p.fecha_creacion)}</td>
               <td class="mono">${p.productos.length}</td>
-              <td>${badgeHtml(p.estado)} ${mostradorBadge(p)} ${faltantesHistorial(p).length ? '<span style="font-size:11px;color:#9A6A0C;font-weight:600;">ℹ️ Tuvo faltante</span>' : ''}</td>
+              <td>${badgeHtml(p.estado)} ${mostradorBadge(p)} ${canceladoBadge(p)} ${faltantesHistorial(p).length ? '<span style="font-size:11px;color:#9A6A0C;font-weight:600;">ℹ️ Tuvo faltante</span>' : ''}</td>
+              <td>${p.cancelado ? '' : `<button type="button" class="btn btn-ghost btn-sm btn-eliminar-pedido" data-elim="${p.id}" title="Eliminar pedido" style="color:var(--red);">🗑</button>`}</td>
             </tr>`).join('')}
         </tbody>
       </table>`}
@@ -749,6 +859,24 @@ function attachCapturaHandlers(){
   document.getElementById('btnNuevoPedido').onclick = openNuevoPedidoModal;
   document.querySelectorAll('tr[data-id]').forEach(tr=>{
     tr.onclick = ()=>{ currentPedidoId = tr.dataset.id; render(); };
+  });
+  document.querySelectorAll('.btn-eliminar-pedido').forEach(btn=>{
+    btn.onclick = async (e)=>{
+      e.stopPropagation();
+      const id = btn.dataset.elim;
+      const p = pedidos.find(x=>x.id===id);
+      if(!p) return;
+      if(!confirm('¿Eliminar el pedido '+p.folio+' ('+p.cliente+')? Esta acción no se puede deshacer.')) return;
+      const motivo = prompt('Motivo (opcional):','') || '';
+      p.cancelado = true;
+      p.fecha_cancelacion = new Date().toISOString();
+      p.motivo_cancelacion = motivo.trim();
+      p.cancelado_por = userName || 'Sin nombre';
+      addHistorial(p, 'Pedido cancelado', motivo.trim() || 'Sin motivo especificado');
+      await savePedidos();
+      showToast('Pedido eliminado.');
+      render();
+    };
   });
   const btnReset = document.getElementById('btnReset');
   if(btnReset) btnReset.onclick = async ()=>{
@@ -1284,6 +1412,7 @@ async function crearPedidoDesdeModal(){
 
 // ---------- LISTA (almacen / embarques / facturacion) ----------
 function listaFiltro(tab, p){
+  if(p.cancelado) return false;
   if(tab==='almacen') return p.estado==='nuevo' || p.estado==='surtiendo';
   if(tab==='embarques') return ['surtido','empacando','empacado'].includes(p.estado) && p.tipo_pedido!=='Mostrador';
   if(tab==='facturacion') return p.estado==='enviado' || p.estado==='mostrador';
@@ -1418,6 +1547,21 @@ function renderDetail(p){
     actionPanel = renderSoloLectura(p);
   }
 
+  const puedeCancelar = backTab==='captura' && !lockedByOther && !p.cancelado;
+  if(puedeCancelar){
+    actionPanel += `
+      <div style="margin-top:18px;padding-top:16px;border-top:1px dashed var(--line);">
+        <button class="btn btn-danger" id="btnCancelarPedido">🗑 Eliminar pedido</button>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin-top:6px;">Úsalo si el cliente canceló o cambió de opinión. El pedido desaparece de Almacén/Embarques/Facturación, pero queda registrado en Historial.</p>
+      </div>`;
+  }
+  if(p.cancelado){
+    actionPanel += `
+      <div style="margin-top:16px;background:#F1F1F1;border:1px solid var(--line);border-radius:6px;padding:10px 14px;">
+        <p style="font-size:13px;color:var(--ink-soft);margin:0;"><strong>🗑 Pedido cancelado</strong> el ${fmtFecha(p.fecha_cancelacion)}${p.motivo_cancelacion?' — '+escapeHtml(p.motivo_cancelacion):''}</p>
+      </div>`;
+  }
+
   const lockBanner = lockedByOther ? `
     <div style="margin:16px 22px 0;background:#FDF2E0;border:1px solid #F0CE8A;color:#7A5510;border-radius:6px;padding:10px 14px;font-size:13px;display:flex;align-items:center;gap:8px;">
       🔒 <strong>${escapeHtml(p.locked_by||'Alguien')}</strong>&nbsp;está viendo/editando este pedido ${lockElapsedTxt(p)}. Se muestra en solo lectura para evitar que se pisen los cambios.
@@ -1504,8 +1648,7 @@ function renderEmbarquesPanel(p){
       const cant = (pr.cantidad_empacada!==undefined && pr.cantidad_empacada!==null) ? pr.cantidad_empacada : pr.cantidad_surtida;
       return parseFloat(cant) !== parseFloat(pr.cantidad_surtida);
     });
-    const requiereGuia = p.tipo_pedido !== 'Local';
-    const puedeConfirmar = allVerificado && conDiferencia.length===0 && (!requiereGuia || !!(p.envio.guia && p.envio.guia.trim()));
+    const puedeConfirmar = allVerificado && conDiferencia.length===0;
     return `
       <div class="section-label">Verificación de mercancía antes de empacar</div>
       <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Revisa cada producto contra lo surtido y confirma la cantidad que realmente vas a meter a la caja.</p>
@@ -1530,8 +1673,11 @@ function renderEmbarquesPanel(p){
         </tbody>
       </table>
       <div class="row2" style="margin-top:14px;">
-        <div class="field"><label>Número de bultos / cajas</label><input type="number" min="1" id="numBultos" value="${p.num_bultos||1}"></div>
-        <div class="field"><label>Número de guía${requiereGuia ? ' (obligatorio para continuar)' : ' (opcional — es entrega local)'}</label><input type="text" id="guiaEmpaque" class="mono" placeholder="${requiereGuia?'Escríbela aquí':'No aplica para entrega local, déjalo en blanco si no tiene'}" value="${escapeHtml(p.envio.guia||'')}"></div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Cajas / bultos y sus medidas</label>
+          <div id="cajasWrap"></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnAgregarCaja" style="margin-top:8px;">+ Agregar otra caja</button>
+        </div>
       </div>
       ${conDiferencia.length ? `
         <div style="margin-top:12px;background:#FBE4E0;border:1px solid var(--red);border-radius:6px;padding:12px 14px;">
@@ -1543,13 +1689,17 @@ function renderEmbarquesPanel(p){
         <button class="btn btn-ghost" id="btnGuardarEmpaque">Guardar avance</button>
         <button class="btn btn-amber" id="btnConfirmarEmpaque" ${puedeConfirmar?'':'disabled'}>Confirmar empaque</button>
       </div>
-      ${puedeConfirmar?'':(conDiferencia.length?'':'<p style="font-size:12px;color:var(--ink-soft);">Marca cada producto como verificado'+(requiereGuia?' y escribe el número de guía':'')+' para poder confirmar el empaque.</p>')}
+      ${puedeConfirmar?'':(conDiferencia.length?'':'<p style="font-size:12px;color:var(--ink-soft);">Marca cada producto como verificado para poder confirmar el empaque.</p>')}
     `;
   }
   if(p.estado==='empacado'){
+    const requiereGuiaEnvio = p.tipo_pedido !== 'Local';
+    const resumenCajas = (p.cajas&&p.cajas.length)
+      ? p.cajas.map((c,i)=>`<div class="caja-resumen-item"><strong>Caja ${i+1}</strong>${c.medidas?': '+escapeHtml(c.medidas):' (sin medidas)'}</div>`).join('')
+      : `<div class="caja-resumen-item"><strong>Bultos:</strong> ${escapeHtml(String(p.num_bultos||1))}</div>`;
     return `
       <div class="section-label">Datos de envío</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">La guía ya se capturó durante el empaque; solo confirma la paquetería y el costo.</p>
+      <div class="caja-resumen-box">📦 ${resumenCajas}</div>
       <div class="field"><label>Paquetería</label>
         <select id="paqueteria">
           <option value="">Selecciona&hellip;</option>
@@ -1557,7 +1707,7 @@ function renderEmbarquesPanel(p){
           <option>Entrega propia</option><option>Otro</option>
         </select>
       </div>
-      <div class="field"><label>Número de guía</label><input type="text" id="guia" class="mono" value="${escapeHtml(p.envio.guia||'')}"></div>
+      <div class="field"><label>Número de guía${requiereGuiaEnvio?' (obligatorio)':' (opcional — es entrega local)'}</label><input type="text" id="guia" class="mono" placeholder="${requiereGuiaEnvio?'Escríbela aquí':'No aplica para entrega local'}" value="${escapeHtml(p.envio.guia||'')}"></div>
       <div class="field"><label>Costo de envío (aproximado, Facturación puede ajustarlo)</label><input type="number" min="0" step="0.01" id="costoEnvio" value="${p.envio.costo_envio||0}"></div>
       <div class="field"><label>Notas (opcional)</label><textarea id="notasEnvio" rows="2"></textarea></div>
       <div class="panel-actions" style="border:none;padding-left:0;padding-right:0;">
@@ -1568,6 +1718,9 @@ function renderEmbarquesPanel(p){
 }
 
 function renderFacturacionPanel(p){
+  if(p.estado==='facturado'){
+    return renderFacturaFotoPanel(p);
+  }
   if(p.estado!=='enviado' && p.estado!=='mostrador'){
     return renderSoloLectura(p);
   }
@@ -1594,6 +1747,23 @@ function renderFacturacionPanel(p){
   `;
 }
 
+function renderFacturaFotoPanel(p){
+  return `
+    ${renderAvisoFaltantes(p)}
+    <div class="section-label">Productos</div>
+    ${prodResumenTabla(p)}
+    <div class="section-label" style="margin-top:16px;">Facturación</div>
+    <p style="font-size:13.5px;"><strong>N° de factura:</strong> <span class="mono">${escapeHtml(p.factura.numero)}</span><br>
+    <strong>Costo de envío:</strong> $${Number(p.factura.costo_envio||0).toFixed(2)}${p.tipo_pedido==='Mostrador'?' (mostrador — sin embarque)':''}</p>
+    <div class="section-label" style="margin-top:16px;">Fotos de la factura</div>
+    <div id="fotoFacturaWrap" class="foto-galeria">
+      <p style="font-size:12.5px;color:var(--ink-soft);">${(p.factura.num_fotos>0) ? 'Cargando fotos&hellip;' : 'Aún no se ha subido ninguna foto de esta factura.'}</p>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" id="btnSubirFotoFactura" style="margin-top:8px;">📷 Agregar foto de la factura</button>
+    <p style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Hasta ${MAX_FOTOS_FACTURA} fotos por pedido.</p>
+  `;
+}
+
 function prodResumenTabla(p){
   const conEmpaque = p.productos.some(pr=>pr.cantidad_empacada!==undefined && pr.cantidad_empacada!==null && ['empacado','enviado'].includes(p.estado));
   return `<table class="prod-table"><thead><tr><th>SKU</th><th>Descripción</th><th>Solicitado</th><th>Surtido</th>${conEmpaque?'<th>Empacado</th>':''}</tr></thead><tbody>
@@ -1612,7 +1782,8 @@ function renderSoloLectura(p){
   if(p.estado==='facturado' && p.factura){
     extra += `<div class="section-label" style="margin-top:16px;">Facturación</div>
       <p style="font-size:13.5px;"><strong>N° de factura:</strong> <span class="mono">${escapeHtml(p.factura.numero)}</span><br>
-      <strong>Costo de envío:</strong> $${Number(p.factura.costo_envio||0).toFixed(2)}${p.tipo_pedido==='Mostrador'?' (mostrador — sin embarque)':''}</p>`;
+      <strong>Costo de envío:</strong> $${Number(p.factura.costo_envio||0).toFixed(2)}${p.tipo_pedido==='Mostrador'?' (mostrador — sin embarque)':''}</p>
+      ${p.factura.num_fotos>0 ? '<div id="fotoFacturaWrapRO" class="foto-galeria"><p style="font-size:12.5px;color:var(--ink-soft);">Cargando fotos&hellip;</p></div>' : ''}`;
   }
   return `${renderAvisoFaltantes(p)}<div class="section-label">Productos</div>${prodResumenTabla(p)}${extra}`;
 }
@@ -1624,6 +1795,128 @@ function clearLockFields(p){
 
 function attachDetailHandlers(p){
   document.getElementById('btnBack').onclick = async ()=>{ await releaseLock(p); currentPedidoId=null; render(); };
+
+  const btnCancelar = document.getElementById('btnCancelarPedido');
+  if(btnCancelar) btnCancelar.onclick = async ()=>{
+    if(!confirm('¿Seguro que quieres cancelar el pedido '+p.folio+'? El cliente '+p.cliente+' ya no lo recibirá. Esta acción no se puede deshacer.')) return;
+    const motivo = prompt('Motivo de la cancelación (opcional, ej. "cliente cambió de opinión"):','') || '';
+    p.cancelado = true;
+    p.fecha_cancelacion = new Date().toISOString();
+    p.motivo_cancelacion = motivo.trim();
+    p.cancelado_por = userName || 'Sin nombre';
+    addHistorial(p, 'Pedido cancelado', motivo.trim() || 'Sin motivo especificado');
+    clearLockFields(p);
+    await savePedidos();
+    showToast('Pedido cancelado.');
+    currentPedidoId = null;
+    render();
+  };
+
+  const btnSubirFoto = document.getElementById('btnSubirFotoFactura');
+  if(btnSubirFoto){
+    const wrap = document.getElementById('fotoFacturaWrap');
+
+    function pintarGaleria(fotos){
+      if(!wrap) return;
+      if(!fotos || fotos.length===0){
+        wrap.innerHTML = '<p style="font-size:12.5px;color:var(--ink-soft);">Aún no se ha subido ninguna foto de esta factura.</p>';
+        return;
+      }
+      wrap.innerHTML = fotos.map((foto,i)=>`
+        <div class="foto-item">
+          <img src="${foto}" data-verfoto="${i}">
+          <button type="button" class="foto-quitar" data-quitarfoto="${i}" title="Quitar esta foto">✕</button>
+        </div>`).join('');
+      wrap.querySelectorAll('[data-verfoto]').forEach(img=>{
+        img.onclick = ()=>{
+          const lb = document.createElement('div');
+          lb.className = 'foto-lightbox';
+          lb.innerHTML = `<img src="${img.src}">`;
+          lb.onclick = ()=> lb.remove();
+          document.body.appendChild(lb);
+        };
+      });
+      wrap.querySelectorAll('[data-quitarfoto]').forEach(btnQ=>{
+        btnQ.onclick = async ()=>{
+          if(!confirm('¿Quitar esta foto?')) return;
+          const idx = parseInt(btnQ.dataset.quitarfoto, 10);
+          const actuales = await obtenerFotosFactura(p.id);
+          actuales.splice(idx, 1);
+          await guardarFotosFactura(p.id, actuales);
+          p.factura.num_fotos = actuales.length;
+          await savePedidos();
+          pintarGaleria(actuales);
+          showToast('Foto eliminada.');
+        };
+      });
+    }
+
+    async function manejarFotoSeleccionada(file){
+      if(!file) return;
+      const actuales = await obtenerFotosFactura(p.id);
+      if(actuales.length >= MAX_FOTOS_FACTURA){
+        showToast('Ya llegaste al máximo de '+MAX_FOTOS_FACTURA+' fotos para este pedido.');
+        return;
+      }
+      wrap.innerHTML = '<p style="font-size:12.5px;color:var(--ink-soft);">Procesando y guardando foto&hellip;</p>';
+      try{
+        const dataUrl = await comprimirImagen(file, 1000, 0.6);
+        const nuevasFotos = actuales.concat([dataUrl]);
+        if(JSON.stringify(nuevasFotos).length > 900000){
+          showToast('La foto es muy pesada incluso comprimida — intenta con otra o mejor luz.');
+          pintarGaleria(actuales);
+          return;
+        }
+        await guardarFotosFactura(p.id, nuevasFotos);
+        p.factura.num_fotos = nuevasFotos.length;
+        await savePedidos();
+        pintarGaleria(nuevasFotos);
+        showToast('Foto agregada ('+nuevasFotos.length+'/'+MAX_FOTOS_FACTURA+').');
+      }catch(err){
+        console.error(err);
+        pintarGaleria(actuales);
+        showToast('No se pudo procesar la foto. Intenta de nuevo.');
+      }
+    }
+
+    btnSubirFoto.onclick = ()=>{
+      // Se crea el input justo al momento del clic, con las propiedades puestas
+      // directo por JavaScript — así el navegador respeta mejor la orden de abrir
+      // la cámara, en vez de mandar a la galería/archivos.
+      const inputFoto = document.createElement('input');
+      inputFoto.type = 'file';
+      inputFoto.accept = 'image/*';
+      inputFoto.capture = 'environment';
+      inputFoto.style.display = 'none';
+      inputFoto.onchange = (e)=>{ manejarFotoSeleccionada(e.target.files[0]); inputFoto.remove(); };
+      document.body.appendChild(inputFoto);
+      inputFoto.click();
+    };
+    if(p.factura && p.factura.num_fotos>0){
+      obtenerFotosFactura(p.id).then(fotos=> pintarGaleria(fotos));
+    }
+  }
+
+  const wrapRO = document.getElementById('fotoFacturaWrapRO');
+  if(wrapRO && p.factura && p.factura.num_fotos>0){
+    obtenerFotosFactura(p.id).then(fotos=>{
+      if(!wrapRO.isConnected) return;
+      if(fotos && fotos.length){
+        wrapRO.innerHTML = fotos.map(f=>`<div class="foto-item"><img src="${f}"></div>`).join('');
+        wrapRO.querySelectorAll('img').forEach(img=>{
+          img.onclick = ()=>{
+            const lb = document.createElement('div');
+            lb.className = 'foto-lightbox';
+            lb.innerHTML = `<img src="${img.src}">`;
+            lb.onclick = ()=> lb.remove();
+            document.body.appendChild(lb);
+          };
+        });
+      } else {
+        wrapRO.innerHTML = '<p style="font-size:12.5px;color:var(--ink-soft);">No se pudieron cargar las fotos guardadas.</p>';
+      }
+    });
+  }
 
   const btnGuardar = document.getElementById('btnGuardarAvance');
   if(btnGuardar) btnGuardar.onclick = async ()=>{
@@ -1663,30 +1956,50 @@ function attachDetailHandlers(p){
     p.estado='empacando'; addHistorial(p,'Empaque iniciado');
     await savePedidos(); render();
   };
+  const cajasWrap = document.getElementById('cajasWrap');
+  if(cajasWrap){
+    let cajas = (p.cajas && p.cajas.length) ? p.cajas.map(c=>({medidas:c.medidas||''})) : Array(parseInt(p.num_bultos)||1).fill(0).map(()=>({medidas:p.medidas_caja||''}));
+
+    function pintarCajas(){
+      cajasWrap.innerHTML = cajas.map((c,i)=>`
+        <div class="caja-row">
+          <span class="caja-num">Caja ${i+1}</span>
+          <input type="text" data-caja-i="${i}" placeholder="Medidas, ej. 30x20x15 cm" value="${escapeHtml(c.medidas)}">
+          ${cajas.length>1 ? `<button type="button" class="caja-quitar" data-quitarcaja="${i}" title="Quitar esta caja">✕</button>` : ''}
+        </div>`).join('');
+      cajasWrap.querySelectorAll('[data-caja-i]').forEach(inp=>{
+        inp.addEventListener('input', ()=>{ cajas[parseInt(inp.dataset.cajaI,10)].medidas = inp.value; });
+      });
+      cajasWrap.querySelectorAll('[data-quitarcaja]').forEach(btnQ=>{
+        btnQ.onclick = ()=>{ cajas.splice(parseInt(btnQ.dataset.quitarcaja,10),1); pintarCajas(); };
+      });
+    }
+    pintarCajas();
+
+    const btnAgregarCaja = document.getElementById('btnAgregarCaja');
+    if(btnAgregarCaja) btnAgregarCaja.onclick = ()=>{ cajas.push({medidas:''}); pintarCajas(); };
+
+    p._leerCajas = ()=> cajas.map(c=>({medidas:(c.medidas||'').trim()}));
+  }
+
   const btnGuardarEmpaque = document.getElementById('btnGuardarEmpaque');
   if(btnGuardarEmpaque) btnGuardarEmpaque.onclick = async ()=>{
     syncEmpaqueInputs(p);
-    const guiaInp = document.getElementById('guiaEmpaque');
-    if(guiaInp) p.envio.guia = guiaInp.value.trim();
-    p.num_bultos = document.getElementById('numBultos').value || p.num_bultos || 1;
+    if(p._leerCajas){ p.cajas = p._leerCajas(); p.num_bultos = p.cajas.length; }
     await savePedidos(); showToast('Avance de verificación guardado.'); render();
   };
   const btnConfirmarEmpaque = document.getElementById('btnConfirmarEmpaque');
   if(btnConfirmarEmpaque) btnConfirmarEmpaque.onclick = async ()=>{
     syncEmpaqueInputs(p);
-    const guiaInp = document.getElementById('guiaEmpaque');
-    const guia = guiaInp ? guiaInp.value.trim() : (p.envio.guia||'');
-    const requiereGuia = p.tipo_pedido !== 'Local';
-    if(requiereGuia && !guia){ p.envio.guia = ''; showToast('Escribe el número de guía antes de confirmar el empaque.'); render(); return; }
-    p.envio.guia = guia;
     if(!p.productos.every(pr=>pr.verificado_empaque)){ showToast('Faltan productos por verificar.'); return; }
     const hayDiferencia = p.productos.some(pr=>parseFloat(pr.cantidad_empacada)!==parseFloat(pr.cantidad_surtida));
     if(hayDiferencia){ showToast('Hay diferencias de cantidad — regresa el pedido a Almacén para completarlo.'); render(); return; }
-    const bultos = document.getElementById('numBultos').value || 1;
-    p.num_bultos = bultos;
+    if(p._leerCajas){ p.cajas = p._leerCajas(); }
+    p.num_bultos = p.cajas ? p.cajas.length : 1;
+    const resumenMedidas = (p.cajas||[]).map((c,i)=> c.medidas ? ('Caja '+(i+1)+': '+c.medidas) : null).filter(Boolean).join(' · ');
     p.estado='empacado';
     p.responsable_empaque = userName || 'Sin nombre';
-    addHistorial(p,'Empaque confirmado', bultos+' bulto(s) · guía '+guia);
+    addHistorial(p,'Empaque confirmado', p.num_bultos+' bulto(s)'+(resumenMedidas?' · '+resumenMedidas:''));
     await savePedidos(); render();
   };
 
@@ -1713,11 +2026,13 @@ function attachDetailHandlers(p){
     const paq = document.getElementById('paqueteria').value;
     const guia = document.getElementById('guia').value.trim();
     const costoEnvio = parseFloat(document.getElementById('costoEnvio').value) || 0;
+    const requiereGuiaEnvio = p.tipo_pedido !== 'Local';
     if(!paq){ showToast('Selecciona la paquetería.'); return; }
+    if(requiereGuiaEnvio && !guia){ showToast('Escribe el número de guía antes de registrar el envío.'); return; }
     p.envio = {paqueteria:paq, guia, costo_envio:costoEnvio, notas:document.getElementById('notasEnvio').value.trim(), fecha_envio:new Date().toISOString()};
     p.estado='enviado';
     p.responsable_embarques = userName || 'Sin nombre';
-    addHistorial(p,'Enviado al cliente', paq+(guia?' · guía '+guia:' · guía pendiente')+' · costo envío $'+costoEnvio.toFixed(2));
+    addHistorial(p,'Enviado al cliente', paq+(guia?' · guía '+guia:' · sin guía (entrega local)')+' · costo envío $'+costoEnvio.toFixed(2));
     clearLockFields(p);
     await savePedidos();
     showToast('Envío registrado. Pasa a Facturación.');
@@ -1816,7 +2131,7 @@ function ordenPantallaFila(a,b){
 }
 
 function renderPantalla(){
-  const activos = pedidos.filter(p=>p.estado!=='facturado').sort(ordenPantallaFila);
+  const activos = pedidos.filter(p=>p.estado!=='facturado' && !p.cancelado).sort(ordenPantallaFila);
   const resumen = ESTADOS_BOARD.map(e=>({estado:e, n:pedidos.filter(p=>p.estado===e).length}));
   return `
     <div class="page-title">
@@ -1910,13 +2225,13 @@ function startPolling(){ setInterval(pollPedidos, 5000); }
 let historialSearch = '';
 function renderHistorial(){
   const rows = pedidos
-    .filter(p=> !historialSearch || (p.folio+' '+p.cliente).toLowerCase().includes(historialSearch.toLowerCase()))
+    .filter(p=> !historialSearch || (p.folio+' '+p.cliente+' '+((p.factura&&p.factura.numero)||'')).toLowerCase().includes(historialSearch.toLowerCase()))
     .sort((a,b)=>b.fecha_creacion.localeCompare(a.fecha_creacion));
   return `
     <div class="page-title">
       <div><h1>Historial</h1><p>Trazabilidad completa de cada pedido, sin papel.</p></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-        <input class="search-input" id="histSearch" placeholder="Buscar por folio o cliente&hellip;" value="${escapeHtml(historialSearch)}">
+        <input class="search-input" id="histSearch" placeholder="Buscar por folio, cliente o factura&hellip;" value="${escapeHtml(historialSearch)}">
         <button class="btn btn-amber" id="btnExportExcel">⬇ Exportar Excel</button>
       </div>
     </div>
@@ -1924,8 +2239,8 @@ function renderHistorial(){
       ${rows.length===0 ? emptyState('🗂️','Sin resultados','Prueba con otro folio o nombre de cliente.') : rows.map(p=>`
         <div style="border-bottom:1px solid var(--line);padding:16px 18px;">
           <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" data-toggle="${p.id}">
-            <div><strong class="mono">${p.folio}</strong> &nbsp;${escapeHtml(p.cliente)}</div>
-            <div style="display:flex;align-items:center;gap:12px;">${badgeHtml(p.estado)}<span style="color:var(--ink-faint);">▾</span></div>
+            <div><strong class="mono">${p.folio}</strong> &nbsp;${escapeHtml(p.cliente)}${p.factura && p.factura.numero ? ` &nbsp;<span class="mono" style="color:var(--teal);font-weight:600;">🧾 Factura ${escapeHtml(p.factura.numero)}</span>` : ''}</div>
+            <div style="display:flex;align-items:center;gap:12px;">${badgeHtml(p.estado)} ${mostradorBadge(p)} ${canceladoBadge(p)}<span style="color:var(--ink-faint);">▾</span></div>
           </div>
           <div id="hist-${p.id}" style="display:none;margin-top:14px;">
             <div class="timeline">
@@ -1936,6 +2251,10 @@ function renderHistorial(){
                   <div class="tl-user">${escapeHtml(h.usuario)}${h.detalle?' — '+escapeHtml(h.detalle):''}</div>
                 </div>`).join('')}
             </div>
+            ${p.factura && p.factura.num_fotos>0 ? `
+              <div class="section-label" style="margin-top:16px;">Fotos de la factura</div>
+              <div class="foto-galeria" id="histFotos-${p.id}"><p style="font-size:12.5px;color:var(--ink-soft);">Cargando fotos&hellip;</p></div>
+            ` : ''}
           </div>
         </div>
       `).join('')}
@@ -1952,8 +2271,33 @@ function attachHistorialHandlers(){
   if(btnExport) btnExport.onclick = exportarExcel;
   document.querySelectorAll('[data-toggle]').forEach(el=>{
     el.onclick = ()=>{
-      const box = document.getElementById('hist-'+el.dataset.toggle);
-      box.style.display = box.style.display==='none' ? 'block' : 'none';
+      const id = el.dataset.toggle;
+      const box = document.getElementById('hist-'+id);
+      const abriendo = box.style.display==='none';
+      box.style.display = abriendo ? 'block' : 'none';
+      if(abriendo){
+        const fotosWrap = document.getElementById('histFotos-'+id);
+        if(fotosWrap && !fotosWrap.dataset.cargado){
+          fotosWrap.dataset.cargado = '1';
+          obtenerFotosFactura(id).then(fotos=>{
+            if(!fotosWrap.isConnected) return;
+            if(fotos && fotos.length){
+              fotosWrap.innerHTML = fotos.map(f=>`<div class="foto-item"><img src="${f}"></div>`).join('');
+              fotosWrap.querySelectorAll('img').forEach(img=>{
+                img.onclick = ()=>{
+                  const lb = document.createElement('div');
+                  lb.className = 'foto-lightbox';
+                  lb.innerHTML = `<img src="${img.src}">`;
+                  lb.onclick = ()=> lb.remove();
+                  document.body.appendChild(lb);
+                };
+              });
+            } else {
+              fotosWrap.innerHTML = '<p style="font-size:12.5px;color:var(--ink-soft);">No se pudieron cargar las fotos guardadas.</p>';
+            }
+          });
+        }
+      }
     };
   });
   const btnReset = document.getElementById('btnReset');
@@ -1965,7 +2309,10 @@ function attachHistorialHandlers(){
 }
 
 // ---------- init ----------
-document.getElementById('userNameInput').oninput = (e)=>{ userName = e.target.value; };
+document.getElementById('userNameInput').oninput = (e)=>{
+  userName = e.target.value;
+  if(userName.trim()) e.target.classList.remove('vacio');
+};
 document.getElementById('btnSound').onclick = (e)=>{
   soundEnabled = !soundEnabled;
   e.target.textContent = soundEnabled ? '🔔 Sonido: ON' : '🔕 Sonido: OFF';
@@ -1976,6 +2323,7 @@ document.body.addEventListener('click', ()=>{ ensureAudio(); }, {once:true});
 
 (async function init(){
   await setupStorage();
+  if(!tieneOperador()){ document.getElementById('userNameInput').classList.add('vacio'); }
   if(usandoFirebase){
     document.getElementById('localWarning').innerHTML =
       '<div class="local-warning" style="background:#E3F5EC;color:#1E7A46;border-bottom-color:#8FD9B0;">🔥 Conectado a Firebase — todos los que abran este enlace comparten los mismos datos en tiempo real.</div>';
